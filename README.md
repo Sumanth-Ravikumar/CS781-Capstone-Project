@@ -1,2 +1,90 @@
-# CS781-Capstone-Project
-CS781 Capstone Project: From-scratch legal language models (GQA, strided GQA, MLA, encoder-decoder) pretrained on Indian legal text and adapted to NER, rhetorical roles, judgment prediction, statute identification, summarisation and prior case retrieval (CS781 Capstone).
+# CS781 Capstone: Legal Language Models Trained from Scratch, Phases 1 to 7
+
+This repository contains the code for all submissions across the seven phases of the CS781 capstone project. Four legal language models were pretrained from scratch on Indian legal text (Phase 1) and adapted to six downstream legal tasks (Phases 2 to 7) with several architectures and adaptation techniques: full and partial fine-tuning, LoRA, LoRMA+, prefix tuning, Houlsby-style adapters, knowledge distillation and ensembling.
+
+## Repository Layout
+
+```
+README.md                  this file
+requirements.txt
+notebooks/                 the four full notebooks, one per model, Phases 1 to 7 end to end
+  annotated/               the same notebooks with an explanation after every code cell
+phase1_pretraining/        README, tokenizer/, per-model extracts, predictions/
+phase2_ner/                README, per-model extracts, predictions/
+phase3_rhetorical_roles/   README, per-model extracts, predictions/
+phase4_cjpe/               README, per-model extracts, predictions/
+phase5_lsi/                README, per-model extracts, predictions/
+phase6_summarisation/      README, per-model extracts, predictions/
+phase7_pcr/                README, per-model extracts, predictions/
+```
+
+Every phase folder contains a README (task, data, methodology, experiments, every run with its leaderboard score and prediction file, observations and execution instructions), `notebooks/` (the code of that phase for each of the four models) and `predictions/` (the submitted prediction files).
+
+## Models
+
+| Model | Attention | Full notebook |
+| --- | --- | --- |
+| GQA decoder | Grouped-query attention (12 query heads, 4 key-value heads), 10 layers, d_model 768 | `notebooks/CS781_gqa_all_phases.ipynb` |
+| Strided GQA decoder | GQA with a local window of 256 plus strided positions (stride 32 or 128) | `notebooks/CS781_strided_all_phases.ipynb` |
+| MLA decoder | DeepSeek-style multi-head latent attention (key-value latent rank 128) | `notebooks/CS781_mla_all_phases.ipynb` |
+| Encoder-decoder (6x6) | Bidirectional encoder and causal decoder with cross-attention | `notebooks/CS781_encdec_all_phases.ipynb` |
+
+All components are implemented from scratch in PyTorch: the byte-level BPE tokeniser, the architectures, the adapters (LoRA, LoRMA+, prefix tuning, Houlsby-style), distillation and the evaluation metrics. No external pretrained weights are used, and every phase starts from the Phase 1 checkpoints of the corresponding model.
+
+## Adaptation Techniques
+
+| Technique | Description |
+| --- | --- |
+| Full fine-tuning | All backbone weights and a task head are trained. |
+| Partial fine-tuning | Only the top layers and the head are trained. |
+| LoRA | Low-rank update W0 x + (a/r) B(Ax) on the attention projections. |
+| LoRMA+ | Multiplicative low-rank update ((a/r) B A + I) W0, identity at initialisation and mergeable into the weights. |
+| Prefix tuning | Trainable key and value vectors added to every attention layer. |
+| Houlsby-style adapter | Bottleneck adapter (down-projection, GELU, up-projection) after the attention and feed-forward outputs. |
+| Knowledge distillation | A half-size student (43.2M parameters) trained against the logits of a larger teacher. |
+| Ensembling | Averaging of the class probabilities of several runs (Phases 3 and 4). |
+
+## Best Test Score per Phase
+
+| Phase | Task | Best submission | Test score |
+| --- | --- | --- | --- |
+| 1 | Pretraining | GQA decoder | BERTScore F1 0.8342 |
+| 2 | Named entity recognition | Distilled GQA student | strict macro-F1 0.4192 |
+| 3 | Rhetorical roles | Ensemble `ens_best_l0` | macro-F1 0.5018 |
+| 4 | Court judgment prediction | GQA ensemble | macro-F1 0.7229 |
+| 5 | Statute identification | GQA full, per-label thresholds | macro-F1 0.3867 |
+| 6 | Summarisation | GQA with LoRMA+ | BERTScore F1 0.8423 |
+| 7 | Prior case retrieval | Strided LoRMA+ | Micro-F1@7 0.3154 |
+
+## Checkpoints
+
+The Phase 1 checkpoints and the Phase 2 student checkpoint (the starting point for Phases 2 to 7) are shared here: https://drive.google.com/drive/folders/1vVrsgiKeorg5tAA6jmHE17qWIA3HAgBl?usp=sharing
+
+| File | Model |
+| --- | --- |
+| `CS781_Capstone_Project_Phase_1/gqa_checkpoints/gqa_final_weights.pt` | GQA decoder |
+| `CS781_Capstone_Project_Phase_1/alt_stride_32_128_checkpoints/best.pt` | Strided GQA decoder |
+| `CS781_Capstone_Project_Phase_1/encdec_6x6_checkpoints/best.pt` | Encoder-decoder (6x6) |
+| `CS781_Capstone_Project_Phase_1/DeepSeek/deepseek_mla_85m_pretrained.pt` | MLA decoder |
+| `CS781_Capstone_Project_Phase_2/student_kd_stage1/best.pt` | Half-size student (distillation stage 1) |
+
+The folder is to be downloaded into `MyDrive` with the sub-folder names preserved, after which the notebooks find the files without any path change. The fine-tuned checkpoints of Phases 2 to 7 are not shared and are regenerated by rerunning the notebook cells.
+
+## Execution Instructions
+
+1. Open the relevant notebook in **Google Colab** with a GPU runtime (an A100 was used for all reported runs; an L4 with 24 GB is sufficient for the smaller runs but considerably slower).
+2. Mount Google Drive when prompted. Outputs and checkpoints are written to `MyDrive/CS781_Capstone_Project_Phase_N`, where N is the phase number.
+3. Add a Colab secret named `HF` that holds the access token of the course data repository. The configuration cell reads it as `HF_TOKEN`, and the repository identifier as `HF_DATASET_REPO`. The first cells of every notebook download the data.
+4. Download the shared checkpoints (see the top-level README) into `MyDrive`, keeping the sub-folder names, or run the Phase 1 training cells to regenerate them.
+5. Run the notebook **from top to bottom**. Later sections reuse the tokenizer, model classes and helper functions defined earlier, and stop with an assertion if one of them is missing.
+6. Each phase section ends by writing `prediction*.json` files in the format expected by the leaderboard.
+
+Phases 3 and 4 build ensembles from saved probability or logit files that are written by the training cells of the same phase; those cells must be executed first.
+
+## What Is Not Included
+
+The tokenised pretraining data and the saved probability and logit files are too large for this repository and are regenerated by the notebooks.
+
+## Documentation
+
+The README in each phase folder documents the task, the data, the methodology, the configuration of every experiment and the results of every run of that phase.
